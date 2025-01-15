@@ -153,7 +153,9 @@ class _BaseDataFrameNaFunctions(t.Generic[DF]):
         return self.df.dropna(how=how, thresh=thresh, subset=subset)
 
     @t.overload
-    def fill(self, value: PrimitiveType, subset: t.Optional[t.List[str]] = ...) -> DF: ...
+    def fill(
+        self, value: PrimitiveType, subset: t.Optional[t.List[str]] = ...
+    ) -> DF: ...
 
     @t.overload
     def fill(self, value: t.Dict[str, PrimitiveType]) -> DF: ...
@@ -336,7 +338,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                     types.StructField(
                         c.name,
                         sqlglot_to_spark(
-                            exp.DataType.build(c.dataType, dialect=self.session.output_dialect)
+                            exp.DataType.build(
+                                c.dataType, dialect=self.session.output_dialect
+                            )
                         ),
                     )
                     for c in self._typed_columns
@@ -356,9 +360,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                 quoted=old_name_id.args["quoted"],
             )
             replacement_mapping[old_name_id] = new_hashed_id
-            expression = expression.transform(replace_id_value, replacement_mapping).assert_is(
-                exp.Select
-            )
+            expression = expression.transform(
+                replace_id_value, replacement_mapping
+            ).assert_is(exp.Select)
         return expression
 
     def _create_cte_from_expression(
@@ -417,7 +421,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
             exp.Select(), expression.ctes + [cte_expression]
         )
         sel_columns = df._get_outer_select_columns(cte_expression)
-        new_expression = new_expression.from_(cte_name).select(*[x.expression for x in sel_columns])
+        new_expression = new_expression.from_(cte_name).select(
+            *[x.expression for x in sel_columns]
+        )
         return df.copy(expression=new_expression, sequence_id=sequence_id)
 
     def _resolve_pending_hints(self) -> Self:
@@ -450,7 +456,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                     ]
                     for matching_cte in matching_ctes:
                         if matching_cte.alias_or_name in join_aliases:
-                            sequence_id_expression.set("this", matching_cte.args["alias"].this)
+                            sequence_id_expression.set(
+                                "this", matching_cte.args["alias"].this
+                            )
                             df.pending_hints.remove(hint)
                             break
                 hint_expression.append("expressions", hint)
@@ -463,7 +471,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         hint_expression = (
             exp.JoinHint(
                 this=hint_name,
-                expressions=[exp.to_table(parameter.alias_or_name) for parameter in args],
+                expressions=[
+                    exp.to_table(parameter.alias_or_name) for parameter in args
+                ],
             )
             if hint_name in JOIN_HINTS
             else exp.Anonymous(
@@ -477,11 +487,15 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
     def _set_operation(self, klass: t.Callable, other: Self, distinct: bool) -> Self:
         other_df = other._convert_leaf_to_cte()
         base_expression = self.expression.copy()
-        base_expression = self._add_ctes_to_expression(base_expression, other_df.expression.ctes)
+        base_expression = self._add_ctes_to_expression(
+            base_expression, other_df.expression.ctes
+        )
         all_ctes = base_expression.ctes
         other_df.expression.set("with", None)
         base_expression.set("with", None)
-        operation = klass(this=base_expression, distinct=distinct, expression=other_df.expression)
+        operation = klass(
+            this=base_expression, distinct=distinct, expression=other_df.expression
+        )
         operation.set("with", exp.With(expressions=all_ctes))
         return self.copy(expression=operation)._convert_leaf_to_cte()
 
@@ -490,7 +504,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         df.expression.ctes[-1].set("cache_storage_level", storage_level)
         return df
 
-    def _add_ctes_to_expression(self, expression: exp.Select, ctes: t.List[exp.CTE]) -> exp.Select:
+    def _add_ctes_to_expression(
+        self, expression: exp.Select, ctes: t.List[exp.CTE]
+    ) -> exp.Select:
         expression = expression.copy()
         with_expression = expression.args.get("with")
         if with_expression:
@@ -506,7 +522,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                         "this",
                         cte.this.where(
                             exp.EQ(
-                                this=exp.Literal.number(existing_cte_counts[cte.alias_or_name]),
+                                this=exp.Literal.number(
+                                    existing_cte_counts[cte.alias_or_name]
+                                ),
                                 expression=exp.Literal.number(
                                     existing_cte_counts[cte.alias_or_name]
                                 ),
@@ -541,7 +559,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
 
         outer_select = item.find(exp.Select)
         if outer_select:
-            return [col(quote_preserving_alias_or_name(x)) for x in outer_select.expressions]
+            return [
+                col(quote_preserving_alias_or_name(x)) for x in outer_select.expressions
+            ]
         return []
 
     def _create_hash_from_expression(self, expression: exp.Expression) -> str:
@@ -553,7 +573,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
 
     def _get_select_expressions(
         self,
-    ) -> t.List[t.Tuple[t.Union[t.Type[exp.Cache], OutputExpressionContainer], exp.Select]]:
+    ) -> t.List[
+        t.Tuple[t.Union[t.Type[exp.Cache], OutputExpressionContainer], exp.Select]
+    ]:
         select_expressions: t.List[
             t.Tuple[t.Union[t.Type[exp.Cache], OutputExpressionContainer], exp.Select]
         ] = []
@@ -562,7 +584,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
             cache_storage_level = cte.args.get("cache_storage_level")
             if cache_storage_level:
                 select_expression = cte.this.copy()
-                select_expression.set("with", exp.With(expressions=copy(main_select_ctes)))
+                select_expression.set(
+                    "with", exp.With(expressions=copy(main_select_ctes))
+                )
                 select_expression.set("cte_alias_name", cte.alias_or_name)
                 select_expression.set("cache_storage_level", cache_storage_level)
                 select_expressions.append((exp.Cache, select_expression))
@@ -588,7 +612,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
             for cte in self.expression.ctes:
                 if cte.alias_or_name == col.column_expression.args["table"].this:
                     return [
-                        Column.ensure_col(exp.column(x.column_alias_or_name, cte.alias_or_name))
+                        Column.ensure_col(
+                            exp.column(x.column_alias_or_name, cte.alias_or_name)
+                        )
                         for x in self._get_outer_select_columns(cte)
                     ]
             raise ValueError(
@@ -626,7 +652,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                     dialect=self.session.input_dialect,
                     schema=self.session.catalog._schema,
                 )
-                pushdown_projections(select_expression, schema=self.session.catalog._schema)
+                pushdown_projections(
+                    select_expression, schema=self.session.catalog._schema
+                )
 
             select_expression = df._replace_cte_names_with_hashes(select_expression)
 
@@ -636,8 +664,10 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                 cache_table = exp.to_table(cache_table_name)
                 original_alias_name = select_expression.args["cte_alias_name"]
 
-                replacement_mapping[exp.to_identifier(original_alias_name)] = exp.to_identifier(  # type: ignore
-                    cache_table_name
+                replacement_mapping[exp.to_identifier(original_alias_name)] = (
+                    exp.to_identifier(  # type: ignore
+                        cache_table_name
+                    )
                 )
                 self.session.catalog.add_table(
                     cache_table_name,
@@ -664,7 +694,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                 )
 
                 # We will drop the "view" if it exists before running the cache table
-                output_expressions.append(exp.Drop(this=cache_table, exists=True, kind="VIEW"))
+                output_expressions.append(
+                    exp.Drop(this=cache_table, exists=True, kind="VIEW")
+                )
             elif expression_type == exp.Create:
                 expression = df.output_expression_container.copy()  # type: ignore
                 expression.set("expression", select_expression)
@@ -715,10 +747,16 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         as_list: bool = False,
         **kwargs,
     ) -> t.Union[str, t.List[str]]:
-        dialect = Dialect.get_or_raise(dialect) if dialect else self.session.output_dialect
+        dialect = (
+            Dialect.get_or_raise(dialect) if dialect else self.session.output_dialect
+        )
         results = []
-        for expression in self._get_expressions(optimize=optimize, openai_config=openai_config):
-            sql = self.session._to_sql(expression, dialect=dialect, pretty=pretty, **kwargs)
+        for expression in self._get_expressions(
+            optimize=optimize, openai_config=openai_config
+        ):
+            sql = self.session._to_sql(
+                expression, dialect=dialect, pretty=pretty, **kwargs
+            )
             if openai_config:
                 assert isinstance(openai_config, OpenAIConfig)
                 verify_openai_installed()
@@ -740,7 +778,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                 )
                 assert chat_completed.choices[0].message.content is not None
                 if openai_config.mode.is_cte_only:
-                    cte_replacement_mapping = json.loads(chat_completed.choices[0].message.content)
+                    cte_replacement_mapping = json.loads(
+                        chat_completed.choices[0].message.content
+                    )
                     for old_name, new_name in cte_replacement_mapping.items():
                         sql = sql.replace(old_name, new_name)
                 else:
@@ -779,7 +819,8 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
             )
             if ambiguous_cols:
                 join_table_identifiers = [
-                    x.this for x in get_tables_from_expression_with_join(self.expression)
+                    x.this
+                    for x in get_tables_from_expression_with_join(self.expression)
                 ]
                 cte_names_in_join = [x.this for x in join_table_identifiers]
                 # If we have columns that resolve to multiple CTE expressions then we want to use each CTE left-to-right
@@ -797,7 +838,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                     ]
                     # Check if there is a CTE with this column that we haven't used before. If so, use it. Otherwise,
                     # use the same CTE we used before
-                    cte = seq_get(ctes_with_column, resolved_column_position[ambiguous_col] + 1)
+                    cte = seq_get(
+                        ctes_with_column, resolved_column_position[ambiguous_col] + 1
+                    )
                     if cte:
                         resolved_column_position[ambiguous_col] += 1
                     else:
@@ -811,7 +854,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
             for col in columns
         ]
         return self.copy(
-            expression=self.expression.select(*[x.expression for x in columns], **kwargs),
+            expression=self.expression.select(
+                *[x.expression for x in columns], **kwargs
+            ),
             **kwargs,
         )
 
@@ -824,7 +869,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         for join_hint in df.pending_join_hints:
             for expression in join_hint.expressions:
                 if expression.alias_or_name == self.sequence_id:
-                    expression.set("this", Column.ensure_col(new_sequence_id).expression)
+                    expression.set(
+                        "this", Column.ensure_col(new_sequence_id).expression
+                    )
         df.session._add_alias_to_mapping(name, new_sequence_id)
         return df._convert_leaf_to_cte(sequence_id=new_sequence_id)
 
@@ -905,11 +952,15 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         from sqlframe.base.functions import coalesce
 
         if on is None:
-            logger.warning("Got no value for on. This appears to change the join to a cross join.")
+            logger.warning(
+                "Got no value for on. This appears to change the join to a cross join."
+            )
             how = "cross"
 
         other_df = other_df._convert_leaf_to_cte()
-        join_expression = self._add_ctes_to_expression(self.expression, other_df.expression.ctes)
+        join_expression = self._add_ctes_to_expression(
+            self.expression, other_df.expression.ctes
+        )
         # Normalizing join type:
         join_type = JOIN_TYPE_MAPPING.get(how, how).replace("_", " ")
         # We will determine actual "join on" expression later so we don't provide it at first
@@ -940,7 +991,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                         "join_on_uuid" in col_expr.meta
                         and col_expr.meta["join_on_uuid"] in other_df_unique_uuids
                     ):
-                        col_expr.set("table", exp.to_identifier(other_df.latest_cte_name))
+                        col_expr.set(
+                            "table", exp.to_identifier(other_df.latest_cte_name)
+                        )
         # Determines the join clause and select columns to be used passed on what type of columns were provided for
         # the join. The columns returned changes based on how the on expression is provided.
         if how != "cross":
@@ -967,7 +1020,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                     num_matching_ctes = 0
                     for cte in potential_ctes:
                         if join_column.alias_or_name in cte.this.named_selects:
-                            left_column = join_column.copy().set_table_name(cte.alias_or_name)
+                            left_column = join_column.copy().set_table_name(
+                                cte.alias_or_name
+                            )
                             right_column = join_column.copy().set_table_name(
                                 other_df.latest_cte_name
                             )
@@ -1010,7 +1065,8 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                     for column_name in select_column_names
                     if column_name
                     not in [
-                        x.alias_or_name if not isinstance(x, str) else x for x in join_column_names
+                        x.alias_or_name if not isinstance(x, str) else x
+                        for x in join_column_names
                     ]
                 ]
                 select_column_names = join_column_names + select_column_names
@@ -1020,17 +1076,23 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                 * There is no deduplication of the results.
                 * The left join dataframe columns go first and right come after. No sort preference is given to join columns
                 """
-                join_columns = self._ensure_and_normalize_cols(join_columns, join_expression)
+                join_columns = self._ensure_and_normalize_cols(
+                    join_columns, join_expression
+                )
                 if len(join_columns) > 1:
                     join_columns = [functools.reduce(lambda x, y: x & y, join_columns)]
                 join_clause = join_columns[0]
-                select_column_names = [column.alias_or_name for column in select_columns]
+                select_column_names = [
+                    column.alias_or_name for column in select_columns
+                ]
 
             # Update the on expression with the actual join clause to replace the dummy one from before
         else:
             select_column_names = [column.alias_or_name for column in select_columns]
             join_clause = None
-        join_expression.args["joins"][-1].set("on", join_clause.expression if join_clause else None)
+        join_expression.args["joins"][-1].set(
+            "on", join_clause.expression if join_clause else None
+        )
         new_df = self.copy(expression=join_expression)
         new_df.pending_join_hints.extend(self.pending_join_hints)
         new_df.pending_hints.extend(other_df.pending_hints)
@@ -1050,7 +1112,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         """
         columns = self._ensure_and_normalize_cols(cols)
         pre_ordered_col_indexes = [
-            i for i, col in enumerate(columns) if isinstance(col.expression, exp.Ordered)
+            i
+            for i, col in enumerate(columns)
+            if isinstance(col.expression, exp.Ordered)
         ]
         if ascending is None:
             ascending = [True] * len(columns)
@@ -1105,11 +1169,15 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                 l_expressions.append(exp.alias_(exp.Null(), r_column, copy=False))
                 r_expressions.append(r_column)
         r_df = (
-            other.copy()._convert_leaf_to_cte().select(*self._ensure_list_of_columns(r_expressions))
+            other.copy()
+            ._convert_leaf_to_cte()
+            .select(*self._ensure_list_of_columns(r_expressions))
         )
         l_df = self.copy()
         if allowMissingColumns:
-            l_df = l_df._convert_leaf_to_cte().select(*self._ensure_list_of_columns(l_expressions))
+            l_df = l_df._convert_leaf_to_cte().select(
+                *self._ensure_list_of_columns(l_expressions)
+            )
         return l_df._set_operation(exp.Union, r_df, False)
 
     @operation(Operation.FROM)
@@ -1172,7 +1240,8 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                 f"Minimum num nulls: {minimum_num_nulls}, Num Columns: {len(null_check_columns)}"
             )
         if_null_checks = [
-            F.when(column.isNull(), F.lit(1)).otherwise(F.lit(0)) for column in null_check_columns
+            F.when(column.isNull(), F.lit(1)).otherwise(F.lit(0))
+            for column in null_check_columns
         ]
         nulls_added_together = functools.reduce(lambda x, y: x + y, if_null_checks)
         num_nulls = nulls_added_together.alias("num_nulls")
@@ -1266,8 +1335,11 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         ...Statistics...
         ...
         """
-        results = self._get_explain_plan_rows()
-        print(results[0][0])
+        sql_queries = self.sql(pretty=False, optimize=True, as_list=True)
+        if len(sql_queries) > 1:
+            raise ValueError("Cannot explain a DataFrame with multiple queries")
+        sql_query = "EXPLAIN " + sql_queries[0]
+        self.session._execute(sql_query)
 
     @operation(Operation.FROM)
     def fillna(
@@ -1303,7 +1375,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
 
         null_replacement_mapping = {
             column.alias_or_name: (
-                F.when(column.isNull(), value).otherwise(column).alias(column.alias_or_name)
+                F.when(column.isNull(), value)
+                .otherwise(column)
+                .alias(column.alias_or_name)
             )
             for column, value in zip(columns, value_columns)
         }
@@ -1334,7 +1408,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
             old_values = list(to_replace)
             new_values = list(to_replace.values())
         elif not old_values and isinstance(to_replace, list):
-            assert isinstance(value, list), "value must be a list since the replacements are a list"
+            assert isinstance(value, list), (
+                "value must be a list since the replacements are a list"
+            )
             assert len(to_replace) == len(value), (
                 "the replacements and values must be the same length"
             )
@@ -1355,16 +1431,20 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                     expression = F.when(column == old_value, new_value)
                 else:
                     expression = expression.when(column == old_value, new_value)  # type: ignore
-            replacement_mapping[column.alias_or_name] = expression.otherwise(column).alias(
-                column.expression.alias_or_name
-            )
+            replacement_mapping[column.alias_or_name] = expression.otherwise(
+                column
+            ).alias(column.expression.alias_or_name)
 
         replacement_mapping = {**all_column_mapping, **replacement_mapping}
-        replacement_columns = [replacement_mapping[column.alias_or_name] for column in all_columns]
+        replacement_columns = [
+            replacement_mapping[column.alias_or_name] for column in all_columns
+        ]
         new_df = new_df.select(*replacement_columns)
         return new_df
 
-    def transform(self, func: t.Callable[..., DF], *args: t.Any, **kwargs: t.Any) -> Self:
+    def transform(
+        self, func: t.Callable[..., DF], *args: t.Any, **kwargs: t.Any
+    ) -> Self:
         """Returns a new :class:`DataFrame`. Concise syntax for chaining custom transformations.
 
         .. versionadded:: 3.0.0
@@ -1483,7 +1563,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         if len(colsMap) != 1:
             raise ValueError("Only a single map is supported")
         col_map = {
-            self._ensure_and_normalize_col(k).alias_or_name: self._ensure_and_normalize_col(v)
+            self._ensure_and_normalize_col(
+                k
+            ).alias_or_name: self._ensure_and_normalize_col(v)
             for k, v in colsMap[0].items()
         }
         existing_cols = self._get_outer_select_columns(self.expression)
@@ -1491,7 +1573,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         select_columns = existing_cols
         for column_name, col_value in col_map.items():
             existing_col_index = (
-                existing_col_names.index(column_name) if column_name in existing_col_names else None
+                existing_col_names.index(column_name)
+                if column_name in existing_col_names
+                else None
             )
             if existing_col_index is not None:
                 select_columns[existing_col_index] = col_value.alias(  # type: ignore
@@ -1508,7 +1592,8 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         new_columns = [
             col
             for col in all_columns
-            if col.alias_or_name not in [drop_column.alias_or_name for drop_column in drop_cols]
+            if col.alias_or_name
+            not in [drop_column.alias_or_name for drop_column in drop_cols]
         ]
         return self.copy().select(*new_columns, append=False)
 
@@ -1555,7 +1640,10 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
             )
         expression = self.expression.copy()
         expression = expression.select(
-            *[exp.alias_(col, new_col) for col, new_col in zip(expression.expressions, cols)],
+            *[
+                exp.alias_(col, new_col)
+                for col, new_col in zip(expression.expressions, cols)
+            ],
             append=False,
         )
         return self.copy(expression=expression)
@@ -1573,7 +1661,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         return self._hint(name, parameter_columns)
 
     @operation(Operation.NO_OP)
-    def repartition(self, numPartitions: t.Union[int, ColumnOrName], *cols: ColumnOrName) -> Self:
+    def repartition(
+        self, numPartitions: t.Union[int, ColumnOrName], *cols: ColumnOrName
+    ) -> Self:
         num_partition_cols = self._ensure_list_of_columns(numPartitions)
         columns = self._ensure_and_normalize_cols(cols)
         args = num_partition_cols + columns
@@ -1645,14 +1735,16 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         columns = self._ensure_and_normalize_cols(cols)
         grouping_columns: t.List[t.List[Column]] = []
         for i in reversed(range(len(columns) + 1)):
-            grouping_columns.extend([list(x) for x in itertools.combinations(columns, i)])
+            grouping_columns.extend(
+                [list(x) for x in itertools.combinations(columns, i)]
+            )
         return self._group_data(self, grouping_columns, self.last_op)
 
     def collect(self) -> t.List[Row]:
         return self._collect()
 
     def _collect(self, **kwargs) -> t.List[Row]:
-        return self.session._collect(self._get_expressions(optimize=False), **kwargs)
+        return self.session._collect(self._get_expressions(optimize=True), **kwargs)
 
     @t.overload
     def head(self) -> t.Optional[Row]: ...
@@ -1717,13 +1809,17 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                     print_schema("element", data_type, True, current_level + 1)
             if column_type.this == exp.DataType.Type.MAP:
                 print_schema("key", column_type.expressions[0], True, current_level + 1)
-                print_schema("value", column_type.expressions[1], True, current_level + 1)
+                print_schema(
+                    "value", column_type.expressions[1], True, current_level + 1
+                )
 
         print("root")
         for column in self._typed_columns:
             print_schema(
                 column.name,
-                exp.DataType.build(column.dataType, dialect=self.session.output_dialect),
+                exp.DataType.build(
+                    column.dataType, dialect=self.session.output_dialect
+                ),
                 column.nullable,
                 0,
             )
@@ -1736,7 +1832,7 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         )
 
     def toPandas(self) -> pd.DataFrame:
-        return self.session._fetchdf(self._get_expressions(optimize=False))
+        return self.session._fetchdf(self._get_expressions(optimize=True))
 
     def createOrReplaceTempView(self, name: str) -> None:
         name = normalize_string(name, from_dialect="input")
@@ -1848,7 +1944,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
 
         df = self.select(
             *[
-                percentile_approx(col_func(x), probabilities, accuracy).alias(f"val_{i}")
+                percentile_approx(col_func(x), probabilities, accuracy).alias(
+                    f"val_{i}"
+                )
                 for i, x in enumerate(ensure_list(col))
             ]
         )
@@ -1890,7 +1988,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         1.0
         """
         if method != "pearson":
-            raise ValueError(f"Currently only the Pearson Correlation Coefficient is supported")
+            raise ValueError(
+                f"Currently only the Pearson Correlation Coefficient is supported"
+            )
 
         corr = get_func_from_session("corr")
         col_func = get_func_from_session("col")
@@ -1940,7 +2040,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
     @t.overload
     def toArrow(self, batch_size: int) -> RecordBatchReader: ...
 
-    def toArrow(self, batch_size: t.Optional[int] = None) -> t.Union[ArrowTable, RecordBatchReader]:
+    def toArrow(
+        self, batch_size: t.Optional[int] = None
+    ) -> t.Union[ArrowTable, RecordBatchReader]:
         """
         `batch_size` and `RecordBatchReader` are not part of the PySpark API
         """
