@@ -16,8 +16,8 @@ from sqlglot.dialects.dialect import DialectType, NormalizationStrategy
 from sqlglot.expressions import parse_identifier
 from sqlglot.helper import ensure_list, seq_get
 from sqlglot.optimizer import optimize
-from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.merge_subqueries import merge_subqueries
+from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify as qualify_func
 from sqlglot.optimizer.qualify_columns import (
     quote_identifiers as quote_identifiers_func,
@@ -549,15 +549,15 @@ class _BaseSession(t.Generic[CATALOG, READER, WRITER, DF, CONN, UDF_REGISTRATION
         normalize_identifiers(expression, dialect=dialect)
         if quote_identifiers:
             quote_identifiers_func(expression, dialect=dialect)
-        self.catalog._schema = dict()
+        # self.catalog._schema = dict()
         return optimize(
-            expression, 
-            dialect=dialect, 
+            expression,
+            dialect=dialect,
             schema=self.catalog._schema,
-            rules=[
-                qualify_func,
-                merge_subqueries,
-            ]
+            # rules=[
+            #     qualify_func,
+            #     merge_subqueries,
+            # ],
         )
 
     def _execute(self, sql: str) -> None:
