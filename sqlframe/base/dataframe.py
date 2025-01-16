@@ -32,6 +32,7 @@ from sqlframe.base.util import (
     get_tables_from_expression_with_join,
     normalize_string,
     quote_preserving_alias_or_name,
+    remove_cte_duplicates,
     sqlglot_to_spark,
     verify_openai_installed,
 )
@@ -653,7 +654,10 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                 raise ValueError(f"Invalid expression type: {expression_type}")
 
             output_expressions.append(expression)
-        return output_expressions  # type: ignore
+
+        cleaned_output_expression = [remove_cte_duplicates(expr) for expr in output_expressions]
+
+        return cleaned_output_expression  # type: ignore
 
     @t.overload
     def sql(
@@ -1212,7 +1216,7 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         ...Statistics...
         ...
         """
-        sql_queries = self.sql(pretty=False, optimize=True, as_list=True)
+        sql_queries = self.sql(pretty=False, optimize=False, as_list=True)
         if len(sql_queries) > 1:
             raise ValueError("Cannot explain a DataFrame with multiple queries")
         sql_query = "EXPLAIN " + sql_queries[0]
@@ -1601,7 +1605,7 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         return self._collect()
 
     def _collect(self, **kwargs) -> t.List[Row]:
-        return self.session._collect(self._get_expressions(optimize=True), **kwargs)
+        return self.session._collect(self._get_expressions(optimize=False), **kwargs)
 
     @t.overload
     def head(self) -> t.Optional[Row]: ...
@@ -1674,7 +1678,7 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         )
 
     def toPandas(self) -> pd.DataFrame:
-        return self.session._fetchdf(self._get_expressions(optimize=True))
+        return self.session._fetchdf(self._get_expressions(optimize=False))
 
     def createOrReplaceTempView(self, name: str) -> None:
         name = normalize_string(name, from_dialect="input")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib
 import typing as t
 import unicodedata
@@ -63,7 +64,8 @@ def to_schema(
     if isinstance(sql_path, exp.Table) and sql_path.this is None:
         return sql_path
     table = exp.to_table(
-        sql_path.copy() if isinstance(sql_path, exp.Table) else sql_path, dialect=dialect
+        sql_path.copy() if isinstance(sql_path, exp.Table) else sql_path,
+        dialect=dialect,
     )
     table.set("catalog", table.args.get("db"))
     table.set("db", table.args.get("this"))
@@ -355,6 +357,57 @@ def sqlglot_to_spark(sqlglot_dtype: exp.DataType) -> types.DataType:
             ]
         )
     raise NotImplementedError(f"Unsupported data type: {sqlglot_dtype}")
+
+
+def remove_cte_duplicates(
+    sql_expr: exp.Expression,
+) -> exp.Expression:
+    ctes: t.Dict[str, t.Tuple[str, exp.Expression]] = {}  # Hash -> (name, expression)
+    cte_order = []  # Preserve original order
+    duplicates = {}  # name -> list of duplicate names
+
+    with_query = None
+    for expression in sql_expr.find_all(exp.With):
+        with_query = expression
+        break
+
+    if not with_query:
+        return sql_expr
+
+    for cte in with_query.expressions:
+        cte_name = cte.alias
+        cte_order.append(cte_name)
+
+        cte_exp_str = str(cte.this).lower().replace(" ", "")
+        cte_hash = hashlib.md5(cte_exp_str.encode()).hexdigest()
+
+        if cte_hash in ctes:
+            original_name = ctes[cte_hash][0]
+            if original_name not in duplicates:
+                duplicates[original_name] = [original_name]
+            duplicates[original_name].append(cte_name)
+        else:
+            ctes[cte_hash] = (cte_name, cte.this)
+
+    if duplicates:
+        print("Duplicated: ", duplicates)
+        new_with_expressions = []
+        seen_hashes = set()
+
+        for cte in with_query.expressions:
+            cte_exp_str = str(cte.this).lower().replace(" ", "")
+            cte_hash = hashlib.md5(cte_exp_str.encode()).hexdigest()
+
+            if cte_hash not in seen_hashes:
+                new_with_expressions.append(cte)
+                seen_hashes.add(cte_hash)
+
+        new_with = exp.With(expressions=new_with_expressions, this=with_query.this)
+
+        cleaned_expr = sql_expr.transform(lambda x: new_with if isinstance(x, exp.With) else x)
+    else:
+        cleaned_expr = sql_expr
+    return cleaned_expr
 
 
 def normalize_string(
