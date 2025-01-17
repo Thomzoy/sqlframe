@@ -79,6 +79,23 @@ JOIN_HINTS = {
     "SHUFFLE_REPLICATE_NL",
 }
 
+JOIN_TYPE_MAPPING = {
+    "inner": "inner",
+    "cross": "cross",
+    "outer": "full_outer",
+    "full": "full_outer",
+    "fullouter": "full_outer",
+    "left": "left_outer",
+    "leftouter": "left_outer",
+    "right": "right_outer",
+    "rightouter": "right_outer",
+    "semi": "left_semi",
+    "leftsemi": "left_semi",
+    "left_semi": "left_semi",
+    "anti": "left_anti",
+    "leftanti": "left_anti",
+    "left_anti": "left_anti",
+}
 
 DF = t.TypeVar("DF", bound="BaseDataFrame")
 
@@ -335,7 +352,8 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         for cte in expression.ctes:
             old_name_id = cte.args["alias"].this
             new_hashed_id = exp.to_identifier(
-                self._create_hash_from_expression(cte.this), quoted=old_name_id.args["quoted"]
+                self._create_hash_from_expression(cte.this),
+                quoted=old_name_id.args["quoted"],
             )
             replacement_mapping[old_name_id] = new_hashed_id
             expression = expression.transform(replace_id_value, replacement_mapping).assert_is(
@@ -390,7 +408,10 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         sequence_id = sequence_id or df.sequence_id
         expression = df.expression.copy()
         cte_expression, cte_name = df._create_cte_from_expression(
-            expression=expression, branch_id=self.branch_id, sequence_id=sequence_id, name=name
+            expression=expression,
+            branch_id=self.branch_id,
+            sequence_id=sequence_id,
+            name=name,
         )
         new_expression = df._add_ctes_to_expression(
             exp.Select(), expression.ctes + [cte_expression]
@@ -494,12 +515,16 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                     )
                     new_cte_alias = self._create_hash_from_expression(cte.this)
                     replaced_cte_names[cte.args["alias"].this] = maybe_parse(
-                        new_cte_alias, dialect=self.session.input_dialect, into=exp.Identifier
+                        new_cte_alias,
+                        dialect=self.session.input_dialect,
+                        into=exp.Identifier,
                     )
                     cte.set(
                         "alias",
                         maybe_parse(
-                            new_cte_alias, dialect=self.session.input_dialect, into=exp.TableAlias
+                            new_cte_alias,
+                            dialect=self.session.input_dialect,
+                            into=exp.TableAlias,
                         ),
                     )
                 existing_ctes.append(cte)
@@ -632,7 +657,10 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                     exp.Literal.string(cache_storage_level),
                 ]
                 expression = exp.Cache(
-                    this=cache_table, expression=select_expression, lazy=True, options=options
+                    this=cache_table,
+                    expression=select_expression,
+                    lazy=True,
+                    options=options,
                 )
 
                 # We will drop the "view" if it exists before running the cache table
@@ -783,7 +811,8 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
             for col in columns
         ]
         return self.copy(
-            expression=self.expression.select(*[x.expression for x in columns], **kwargs), **kwargs
+            expression=self.expression.select(*[x.expression for x in columns], **kwargs),
+            **kwargs,
         )
 
     @operation(Operation.NO_OP)
@@ -881,13 +910,22 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
 
         other_df = other_df._convert_leaf_to_cte()
         join_expression = self._add_ctes_to_expression(self.expression, other_df.expression.ctes)
+        # Normalizing join type:
+        join_type = JOIN_TYPE_MAPPING.get(how, how).replace("_", " ")
         # We will determine actual "join on" expression later so we don't provide it at first
         join_expression = join_expression.join(
-            join_expression.ctes[-1].alias, join_type=how.replace("_", " ")
+            join_expression.ctes[-1].alias,
+            join_type=join_type,
         )
         self_columns = self._get_outer_select_columns(join_expression)
         other_columns = self._get_outer_select_columns(other_df.expression)
         join_columns = self._ensure_and_normalize_cols(on)
+
+        select_columns = (
+            self_columns
+            if join_type in ["left anti", "left semi"]
+            else self_columns + other_columns
+        )
         # If the two dataframes being joined come from the same branch, we then check if they have any columns that
         # were created using the "branch_id" (df["column_name"]). If so, we know that we need to differentiate
         # the two columns since they would end up with the same table name. We do this by checking for the unique
@@ -965,7 +1003,7 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                         if not isinstance(column.expression.this, exp.Star)
                         else column.sql()
                     )
-                    for column in self_columns + other_columns
+                    for column in select_columns
                 ]
                 select_column_names = [
                     column_name
@@ -986,13 +1024,11 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
                 if len(join_columns) > 1:
                     join_columns = [functools.reduce(lambda x, y: x & y, join_columns)]
                 join_clause = join_columns[0]
-                select_column_names = [
-                    column.alias_or_name for column in self_columns + other_columns
-                ]
+                select_column_names = [column.alias_or_name for column in select_columns]
 
             # Update the on expression with the actual join clause to replace the dummy one from before
         else:
-            select_column_names = [column.alias_or_name for column in self_columns + other_columns]
+            select_column_names = [column.alias_or_name for column in select_columns]
             join_clause = None
         join_expression.args["joins"][-1].set("on", join_clause.expression if join_clause else None)
         new_df = self.copy(expression=join_expression)
@@ -1147,7 +1183,10 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
 
     def _get_explain_plan_rows(self) -> t.List[Row]:
         sql_queries = self.sql(
-            pretty=False, optimize=False, as_list=True, dialect=self.session.execution_dialect
+            pretty=False,
+            optimize=False,
+            as_list=True,
+            dialect=self.session.execution_dialect,
         )
         if len(sql_queries) > 1:
             raise ValueError("Cannot explain a DataFrame with multiple queries")
@@ -1158,7 +1197,9 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         return results
 
     def explain(
-        self, extended: t.Optional[t.Union[bool, str]] = None, mode: t.Optional[str] = None
+        self,
+        extended: t.Optional[t.Union[bool, str]] = None,
+        mode: t.Optional[str] = None,
     ) -> None:
         """Prints the (logical and physical) plans to the console for debugging purposes.
 
@@ -1630,7 +1671,10 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         return self.head()
 
     def show(
-        self, n: int = 20, truncate: t.Optional[t.Union[bool, int]] = None, vertical: bool = False
+        self,
+        n: int = 20,
+        truncate: t.Optional[t.Union[bool, int]] = None,
+        vertical: bool = False,
     ):
         if vertical:
             raise NotImplementedError("Vertical show is not yet supported")
@@ -1648,7 +1692,10 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
 
     def printSchema(self, level: t.Optional[int] = None) -> None:
         def print_schema(
-            column_name: str, column_type: exp.DataType, nullable: bool, current_level: int
+            column_name: str,
+            column_type: exp.DataType,
+            nullable: bool,
+            current_level: int,
         ):
             if level and current_level >= level:
                 return
@@ -1659,7 +1706,12 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
             )
             if column_type.this in (exp.DataType.Type.STRUCT, exp.DataType.Type.OBJECT):
                 for column_def in column_type.expressions:
-                    print_schema(column_def.name, column_def.args["kind"], True, current_level + 1)
+                    print_schema(
+                        column_def.name,
+                        column_def.args["kind"],
+                        True,
+                        current_level + 1,
+                    )
             if column_type.this == exp.DataType.Type.ARRAY:
                 for data_type in column_type.expressions:
                     print_schema("element", data_type, True, current_level + 1)
@@ -1691,7 +1743,8 @@ class BaseDataFrame(t.Generic[SESSION, WRITER, NA, STAT, GROUP_DATA]):
         df = self.copy()._convert_leaf_to_cte()
         self.session.temp_views[name] = df
         self.session.catalog.add_table(
-            name, [x.alias_or_name for x in self._get_outer_select_columns(df.expression)]
+            name,
+            [x.alias_or_name for x in self._get_outer_select_columns(df.expression)],
         )
 
     def count(self) -> int:
