@@ -390,7 +390,6 @@ def remove_cte_duplicates(
             ctes[cte_hash] = (cte_name, cte.this)
 
     if duplicates:
-        print("Duplicated: ", duplicates)
         new_with_expressions = []
         seen_hashes = set()
 
